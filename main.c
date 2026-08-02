@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
-#define MYPORT "8080"
+#define SERVER_PORT "8080"
 #define MAXBUFLEN 1024
 
 int main(void) {
@@ -23,7 +23,7 @@ int main(void) {
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = AI_PASSIVE;
 
-    if ((rv = getaddrinfo(NULL, MYPORT, &hints, &servinfo)) != 0) {
+    if ((rv = getaddrinfo(NULL, SERVER_PORT, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return 1;
     }
