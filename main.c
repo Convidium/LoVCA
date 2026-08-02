@@ -1,56 +1,71 @@
+#define _POSIX_C_SOURCE 200112L
+
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h> 
+#include <netdb.h>
 
-#define TARGET_IP "127.0.0.1"
-#define PORT 9999
+#define MYPORT "8080"
+#define MAXBUFLEN 1024
 
-int main() {int sockfd;
-    struct sockaddr_in dest_addr;
-    char *message = "Test UDP packet for Wireshark";
+int main(void) {
+    int sockfd;
+    struct addrinfo hints, *servinfo, *p;
+    int rv;
+    char buf[MAXBUFLEN];
+    struct sockaddr_storage requesting_addr;
+    socklen_t addr_len;
 
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd < 0) {
-        perror("Error while creating socket");
-        exit(1);
-    }
-    // Fill the memory block that represents our IP adress with 0's
-    memset(&dest_addr, 0, sizeof(dest_addr));
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_flags = AI_PASSIVE;
 
-    // Set the address format to our socket as AF_INET (IPv4, AF_INET6 ==> IPv6)
-    dest_addr.sin_family = AF_INET;
-    // Set the desired port destination to our socket
-    // htons() transforms our 16-bit number into a platform-specific byte order
-    dest_addr.sin_port = htons(PORT);
-
-    if (inet_pton(AF_INET, TARGET_IP, &dest_addr.sin_addr) <= 0) {
-        perror("Incorrect IP address!");
-        close(sockfd);
-        exit(1);
+    if ((rv = getaddrinfo(NULL, MYPORT, &hints, &servinfo)) != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        return 1;
     }
 
-
-    printf("Countdown:\n");
-
-    for (int i = 5; i > 0; i--) {
-        printf("%d...\n", i);
-        int bytes_sent = sendto(sockfd, message, strlen(message), 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
-
-        if (bytes_sent < 0) {
-            perror("Error while sending message");
-        } else {
-            printf("Succesfully sent %d bytes to %s:%d\n", bytes_sent, TARGET_IP, PORT);
+    for (p = servinfo; p != NULL; p = p->ai_next) {
+        if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+            perror("listener: socket");
+            continue;
         }
-        // Pause execution for 1 second
-        sleep(1);
+
+        if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+            close(sockfd);
+            perror("listener: bind");
+            continue;
+        }
+
+        break;
     }
 
-    printf("Time's up!\n");
+    if (p == NULL) {
+        fprintf(stderr, "listener: failed to bind socket\n");
+        return 2;
+    }
+
+    freeaddrinfo(servinfo);
+
+    printf("listener: waiting to recvfrom...\n");
+
+    addr_len = sizeof requesting_addr;
+    ssize_t numbytes = recvfrom(sockfd, buf, MAXBUFLEN-1 , 0,
+                                (struct sockaddr *)&requesting_addr, &addr_len);
+
+    if (numbytes == -1) {
+        perror("recvfrom");
+        return 1;
+    }
+
+    buf[numbytes] = '\0';
+    printf("listener: packet is %ld bytes long\n", numbytes);
+    printf("listener: packet contains \"%s\"\n", buf);
+
     close(sockfd);
+
     return 0;
 }

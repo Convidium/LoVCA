@@ -1,48 +1,27 @@
 #include <stdio.h>
-#include <strings.h>
-#include <sys/types.h>
-#include <arpa/inet.h>
+#include <string.h>
+#include <unistd.h>
 #include <sys/socket.h>
-#include<netinet/in.h>
-#include<unistd.h>
-#include<stdlib.h>
+#include <arpa/inet.h>
 
-#define PORT 5000
-#define MAXLINE 1000
+#define PORT 8080
+#define SERVER_IP "127.0.0.1"
 
-// Driver code
-int main()
-{   
-    char buffer[100];
-    char *message = "Hello Server";
-    int sockfd, n;
-    struct sockaddr_in servaddr;
-    
-    // clear servaddr
-    bzero(&servaddr, sizeof(servaddr));
-    servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    servaddr.sin_port = htons(PORT);
-    servaddr.sin_family = AF_INET;
-    
-    // create datagram socket
+int main(void) {
+    int sockfd;
+    char *message = "Hello, Server!";
+    struct sockaddr_in server_addr;
+
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    
-    // connect to server
-    if(connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
-    {
-        printf("\n Error : Connect Failed \n");
-        exit(0);
-    }
 
-    // request to send datagram
-    // no need to specify server address in sendto
-    // connect stores the peers IP and port
-    sendto(sockfd, message, MAXLINE, 0, (struct sockaddr*)NULL, sizeof(servaddr));
-    
-    // waiting for response
-    recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr*)NULL, NULL);
-    puts(buffer);
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr);
 
-    // close the descriptor
+    sendto(sockfd, message, strlen(message), 0,
+           (struct sockaddr *)&server_addr, sizeof(server_addr));
+
     close(sockfd);
+    return 0;
 }
