@@ -12,9 +12,11 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <errno.h>
+#include <poll.h>
 
-#define SERVER_PORT "8841"
-#define BACKLOG 10   // how many pending connections queue will hold
+#define PORT "8841"
+#define BACKLOG 10
+#define MAX_CLIENTS 20
 #define MAX_BUFF_LEN 100
 
 void *get_in_addr(struct sockaddr *sa)
@@ -26,100 +28,133 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-int main(void) {
-    int sockfd, new_fd;
+void broadcast_message(struct pollfd fds[], int sender_fd, const char *msg, int msg_len) {
+    for (int i = 1; i < MAX_CLIENTS; i++) {
+        if (fds[i].fd != -1 && fds[i].fd != sender_fd) {
+            if (send(fds[i].fd, msg, msg_len, 0) == -1) {
+                perror("Error: send() in broadcast");
+            }
+        }
+    }
+}
 
-    int addr_status, bind_status, listen_status;
+int main(void) {
+    int listen_fd;
     struct addrinfo hints, *servinfo;
 
-    struct sockaddr_storage client_addr; // connector's address info
-    socklen_t their_addr_size;
-    char client_ip[INET_ADDRSTRLEN];
+    int addr_status;
+    int bind_status;
 
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_INET;
-    hints.ai_flags = AI_PASSIVE;
     hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+    hints.ai_family = AF_INET;
 
-    addr_status = getaddrinfo(NULL, SERVER_PORT, &hints, &servinfo);
+    addr_status = getaddrinfo(NULL, PORT, &hints, &servinfo);
     if (addr_status != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(addr_status));
+        fprintf(stderr, "Error: getaddrinfo()\n");
         return 1;
     }
 
-    sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
-    if (sockfd == -1) {
+    listen_fd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
+    if (listen_fd == -1) {
         perror("Error: socket()");
+        freeaddrinfo(servinfo);
         return 2;
     }
 
-    bind_status = bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen);
+    int yes = 1;
+    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+
+    bind_status = bind(listen_fd, servinfo->ai_addr, servinfo->ai_addrlen);
     if (bind_status == -1) {
-        perror("Error: bind()");
-        close(sockfd);
+        perror("Error: socket()");
+        close(listen_fd);
+        freeaddrinfo(servinfo);
         return 3;
     }
 
     freeaddrinfo(servinfo);
 
-    listen_status = listen(sockfd, BACKLOG);
-
-    if (listen_status == -1) {
+    if (listen(listen_fd, BACKLOG) == -1) {
         perror("Error: listen()");
-        return 3;
+        close(listen_fd);
+        return 4;
     }
 
-    printf("Server: waiting for connections...\n");
+    printf("=== Broadcast Chat Server started on port %s ===\n", PORT);
+
+    struct pollfd fds[MAX_CLIENTS + 1];
+
+    // Initializing listening socket (us)
+    fds[0].fd = listen_fd;
+    fds[0].events = POLLIN; // Interested in an event "new connection"
+
+    // We leave the rest of the sockets as -1
+    for (int i = 1; i <= MAX_CLIENTS; i++) {
+        fds[i].fd = -1;
+    }
+
+    char buf[MAX_BUFF_LEN];
 
     while (1) {
-        their_addr_size = sizeof client_addr;
-
-        new_fd = accept(sockfd, (struct sockaddr *)&client_addr, &their_addr_size);
-        if (new_fd == -1) {
-            perror("Error: accept()");
-            continue;
+        int poll_count = poll(fds, MAX_CLIENTS+1, -1);
+        if (poll_count == -1) {
+            perror("Error: poll()");
+            break;
         }
 
-        inet_ntop(client_addr.ss_family,
-                  get_in_addr((struct sockaddr *)&client_addr),
-                  client_ip, sizeof client_ip);
-        printf("Server: got connection from %s\n", client_ip);
-        printf("Type your messages below. Type 'exit' or press Ctrl+D to disconnect this client.\n\n");
+        if (fds[0].revents & POLLIN) {
+            struct sockaddr_storage client_addr;
+            socklen_t addr_len = sizeof client_addr;
+            int new_fd = accept(listen_fd, (struct sockaddr *)&client_addr, &addr_len);
 
-        char send_buf[MAX_BUFF_LEN];
+            if (new_fd != -1) {
+                char client_ip[INET_ADDRSTRLEN];
+                inet_ntop(client_addr.ss_family, get_in_addr((struct sockaddr *)&client_addr), client_ip, sizeof client_ip);
 
-        while(1) {
-            printf("Server > ");
-            fflush(stdout);
+                int added = 0;
+                for (int i = 0; i <= MAX_CLIENTS; i++) {
+                    if (fds[i].fd == -1) {
+                        fds[i].fd = new_fd;
+                        fds[i].events = POLLIN;
+                        printf("[+] New client connected from %s (slot %d)\n", client_ip, i);
+                            added = 1;
+                            break;
+                    }
+                }
 
-            if (fgets(send_buf, sizeof send_buf, stdin) == NULL) {
-                // Either Ctrl + D (EOF) was pressed or some write error happened
-                printf("\nServer: End of input detected. Closing connection\n");
-                // Clear the flag that signalizes EOF, so that a new socket could join.
-                clearerr(stdin); 
-                break;
-            }
-
-            if (strcmp(send_buf, "exit\n") == 0) {
-                printf("Server: Disconnecting client by operator command.\n");
-                break;
-            }
-
-            send_buf[strcspn(send_buf, "\n")] = '\0';
-            int len = strlen(send_buf);
-            int bytes_sent = send(new_fd, send_buf, len, 0);
-
-            if (bytes_sent == -1) {
-                perror("Error: send()");
-                break;
+                if (!added) {
+                    printf("{-} Server full! Rejected connection from %s\n", client_ip);
+                    const char *full_msg = "Server is full (max 20 clients).\n";
+                    send(new_fd, full_msg, strlen(full_msg), 0);
+                    close(new_fd);
+                }
             }
         }
-        close(new_fd);
-        printf("Server: Connection closed with %s.\n", client_ip);
-        printf("Waiting for next client...\n");
-        continue;
+
+        for (int i = 1; i <= MAX_CLIENTS; i++) {
+            if (fds[i].fd != -1 && (fds[i].revents & POLLIN)) {
+                int bytes_received = recv(fds[i].fd, buf, sizeof(buf) - 1, 0);
+
+                if (bytes_received <= 0) {
+                    if (bytes_received == 0) {
+                        printf("{-} Client on slot %d disconnected.\n", i);
+                    } else {
+                        perror("Error: recv()");
+                    }
+                    close(fds[i].fd);
+                    fds[i].fd = -1;
+                } else {
+                    buf[bytes_received] = '\0';
+                    printf("[Slot %d]: %s", i, buf);
+
+                    broadcast_message(fds, fds[i].fd, buf, bytes_received);
+                }
+            }
+        }
     }
 
-    close(sockfd);
+    close(listen_fd);
     return 0;
 }

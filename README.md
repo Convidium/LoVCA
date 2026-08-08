@@ -5,7 +5,7 @@ A decentralized, autonomous app for local video communication.
 
 
 ## Functionality so far:
-Simple server-client UDP connection, where client sends a message to local server.
+Simple server-client UDP/TCP connection, where client sends a message to local server.
 
 # How to run:
 
