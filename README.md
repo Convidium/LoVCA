@@ -21,9 +21,9 @@ It instantly sends the message, and both programs terminate.<br/>
 Message sent by client is displayed in the **server terminal**
 
 ## TCP Server / Client
-You'll also need two terminals. 
+You'll need at least two terminals. 
 Make sure you're in the LoVCA folder (like with UDP)
-1. Then in the first terminal write `./bin/server_tcp.out` (I assume **.out** is binary file for Linux only?). 
+1. Then in the first terminal write `./bin/server_tcp.out` (**.out** is a binary file for Linux only). 
 It runs the compiled binary program file that sets up the **server**.
 
 2. Then in the second terminal write `./bin/client_tcp.out localhost`.
@@ -31,11 +31,14 @@ It runs the compiled binary program file that sets up the **server**.
 used for communication between **server** and **client** processes. We write it, so that our **client** knows 
 where to look for the **server**.
 
+3. You can also add as many clients as you like (max limit is 20). They all would work identically.
+
 ### How TCP server works:
-The entire point of my TCP **server** is to send messages to a client (only one at a time),
-and the connected **client** simply recieves it. If a server decides to terminate the communication
-it does so via pressing `Ctrl + D` or writing `exit` in the **server terminal**. **Client** then gets disconnected,
-and the **server** resumes waiting for a new connection.
+The entire point of my TCP **server** is to send messages to an arbitrary amount of clients (max: 20),
+and the connected **client**'s simply recieve it. If a server decides to terminate the communication
+it does so via pressing `Ctrl + D` or writing `exit` in the **server terminal**. **Client**'s then get disconnected,
+and the **server** terminates.
+**Server** simply distributes the same message to all connected **clients**, so they're the same across every **client**.
 
 ## P.S. running not on Linux:
 I think you can compile the **server_xxx.c** (server), and **client_xxx.c** elsewhere, using the compiler of your choice.<br/>
