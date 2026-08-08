@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <poll.h>
 
 #include <arpa/inet.h>
 
@@ -68,23 +69,57 @@ int main(int argc, char *argv[]) {
     }
 
     inet_ntop(servinfo->ai_family, get_in_addr((struct sockaddr *)servinfo->ai_addr), server_ip, sizeof server_ip);
-    printf("client: connected to %s\n", server_ip);
+    printf("Client: connected to %s\n", server_ip);
+    printf("Type 'exit' or press Ctrl+D to disconnect this server.\n\n");
 
     freeaddrinfo(servinfo);
+    
+    struct pollfd fds[2];
+    fds[0].fd = STDIN_FILENO;
+    fds[0].events = POLLIN;
+
+    fds[1].fd = sockfd;
+    fds[1].events = POLLIN;
+
+    char send_buf[MAX_BUFF_LEN];
 
     while(1) {
-        int bytes_received = recv(sockfd, buf, MAX_BUFF_LEN - 1, 0);
-        
-        if (bytes_received == -1) {
-            perror("Error: recv()");
-            break;
-        } else if (bytes_received == 0) {
-            printf("\nClient: Server closed connection without sending data.\n");
+        int poll_count = poll(fds, 2, -1);
+        if (poll_count == -1) {
+            perror("Error: poll()");
             break;
         }
 
-        buf[bytes_received] = '\0';
-        printf("Server message (%d bytes):\n\"%s\"\n", bytes_received, buf);
+        if (fds[1].revents & POLLIN) {
+            int bytes_received = recv(sockfd, buf, MAX_BUFF_LEN - 1, 0);
+
+            if (bytes_received == -1) {
+                perror("Error: recv()");
+                break;
+            } else if (bytes_received == 0) {
+                printf("\nClient: Server closed connection without sending data.\n");
+                break;
+            }
+
+            buf[bytes_received] = '\0';
+            buf[strcspn(buf, "\r\n")] = '\0'; 
+            printf("Server message (%d bytes):\n\"%s\"\n", bytes_received, buf);
+        }
+
+        if (fds[0].revents & POLLIN) {
+            if (fgets(send_buf, sizeof send_buf, stdin) == NULL) {
+                // Either Ctrl + D (EOF) was pressed or some write error happened
+                printf("\nCLient: closing connection...\n");
+                // Clear the flag that signalizes EOF
+                clearerr(stdin); 
+                break;
+            }
+
+            if (strcmp(send_buf, "exit\n") == 0) {
+                printf("Client: Disconnecting by operator command.\n");
+                break;
+            }
+        }
     }
 
     close(sockfd);

@@ -17,9 +17,11 @@
 #define PORT "8841"
 #define BACKLOG 10
 #define MAX_CLIENTS 20
-#define MAX_BUFF_LEN 100
+#define MAX_BUFF_LEN 256
 
 int main(void) {
+    signal(SIGPIPE, SIG_IGN);
+    
     int listen_fd;
     struct addrinfo hints, *servinfo;
 
@@ -111,9 +113,10 @@ int main(void) {
             }
         }
 
-        if (fds[0].revents & POLLIN) {
+        if (fds[0].revents & (POLLIN | POLLHUP)) {
             if (fgets(send_buf, sizeof send_buf, stdin) == NULL) {
                 clearerr(stdin);
+                printf("\n[Server] EOF detected on stdin. Exiting server...\n");
                 continue;
             }
 
@@ -136,6 +139,7 @@ int main(void) {
                     int bytes = send(client_sockets[i], msg_with_newline, strlen(msg_with_newline), 0);
                     
                     if (bytes == -1) {
+                        printf("{-} Failed to send to slot %d, closing connection.\n", i);
                         close(client_sockets[i]);
                         client_sockets[i] = -1;
                     } else {
