@@ -13,8 +13,7 @@
 #include <arpa/inet.h>
 
 #define PORT "8841"
-
-#define MAX_BUFF_LEN 100
+#define MAX_BUFF_LEN 256
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -75,6 +74,7 @@ int main(int argc, char *argv[]) {
 
     while(1) {
         int bytes_received = recv(sockfd, buf, MAX_BUFF_LEN - 1, 0);
+        
         if (bytes_received == -1) {
             perror("Error: recv()");
             break;
