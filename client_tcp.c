@@ -16,10 +16,12 @@
 #define PORT "8841"
 #define MAX_BUFF_LEN 256
 
+#include "protocol.h"
+
 typedef enum {
     SERVER_CONTINUE = 0,
     SERVER_STOP = 1
-} server_control_t;
+} client_control_t;
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -74,7 +76,23 @@ int get_client_socket(char address[]) {
     return sockfd;
 }
 
-server_control_t handle_server_message(int sockfd) {
+int send_auth_message(int sockfd, const char *nickname) {
+    msg_header_t header;
+    header.type = MSG_AUTH;
+    header.length = htons(strlen(nickname));
+
+    if (send(sockfd, &header, sizeof(header), MSG_NOSIGNAL) == -1) {
+        return -1;
+    }
+
+    if (send(sockfd, nickname, strlen(nickname), MSG_NOSIGNAL) == -1) {
+        return -1;
+    }
+
+    return 0;
+}
+
+client_control_t handle_server_message(int sockfd) {
     char buf[MAX_BUFF_LEN];
     int bytes_received = recv(sockfd, buf, MAX_BUFF_LEN - 1, 0);
 
@@ -93,7 +111,7 @@ server_control_t handle_server_message(int sockfd) {
     return SERVER_CONTINUE;
 }
 
-server_control_t handle_stdin_input() {
+client_control_t handle_stdin_input() {
     char send_buf[MAX_BUFF_LEN];
     if (fgets(send_buf, sizeof send_buf, stdin) == NULL) {
         // Either Ctrl + D (EOF) was pressed or some write error happened
@@ -111,7 +129,7 @@ server_control_t handle_stdin_input() {
     return SERVER_CONTINUE;
 }
 
-server_control_t process_connections(struct pollfd fds[], int sockfd) {
+client_control_t process_connections(struct pollfd fds[], int sockfd) {
     if (fds[1].revents & (POLLIN | POLLHUP)) {
         if (handle_server_message(sockfd) == SERVER_STOP) {
             return SERVER_STOP;
@@ -130,15 +148,24 @@ server_control_t process_connections(struct pollfd fds[], int sockfd) {
 int main(int argc, char *argv[]) {
     int sockfd;
 
-    if (argc != 2) {
-        fprintf(stderr, "Error: client hostname required\n");
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <IP/hostname> <nickname>\n", argv[0]);
         return SERVER_STOP;
     }
+    char *server_ip = argv[1];
+    char *nickname = argv[2];
 
-    sockfd = get_client_socket(argv[1]);
+    sockfd = get_client_socket(server_ip);
     if (sockfd == -1) {
         fprintf(stderr, "Failed to initialize client socket.\n");
         return SERVER_STOP;
+    }
+
+    printf("Authenticating as '%s'...\n", nickname);
+    if (send_auth_message(sockfd, nickname) == -1) {
+        perror("Failed to send auth message.");
+        close(sockfd);
+        return 1;
     }
 
     struct pollfd fds[2];
@@ -156,7 +183,7 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        server_control_t status = process_connections(fds, sockfd);
+        client_control_t status = process_connections(fds, sockfd);
         if (status == SERVER_STOP) {
             running = 0;
         }

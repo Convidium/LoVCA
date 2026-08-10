@@ -19,10 +19,19 @@
 #define MAX_CLIENTS 20
 #define MAX_BUFF_LEN 256
 
+#include "protocol.h"
+
 typedef enum {
     SERVER_CONTINUE = 0,
     SERVER_STOP = 1
 } server_control_t;
+
+typedef struct {
+    int fd;
+    char nickname[MAX_NICKNAME_LEN + 1];
+} client_t;
+
+client_t clients[MAX_CLIENTS];
 
 
 // Convert socket to IP address string.
@@ -96,10 +105,12 @@ int get_listener_socket(void) {
     return listen_fd;
 }
 
-void handle_incoming_connection(int listener, int client_sockets[]) {
+void handle_incoming_connection(int listener) {
     struct sockaddr_storage new_addr; // Client address
     socklen_t addrlen;
     int newfd;  // Newly accept()'ed socket descriptor
+    char remoteIP[INET6_ADDRSTRLEN];
+    int client_port = 0;
 
     addrlen = sizeof new_addr;
     newfd = accept(listener, (struct sockaddr *)&new_addr, &addrlen);
@@ -108,23 +119,60 @@ void handle_incoming_connection(int listener, int client_sockets[]) {
         perror("Error: accept()");
         return;
     }
+
+    msg_header_t header;
+    int bytes = recv(newfd, &header, sizeof(header), 0);
+    if (bytes <= 0 || header.type != MSG_AUTH) {
+        printf("\n{-} Client failed authentication header. Closing socket %d.\n", newfd);
+        close(newfd);
+        return;
+    }
+
+    uint16_t name_len = ntohs(header.length);
+    if (name_len == 0 || name_len > MAX_NICKNAME_LEN) {
+        printf("\n{-} Invalid nickname length (%d bytes). Connection rejected.\n", name_len);
+        close(newfd);
+        return;
+    }
+
+    char temp_nick[MAX_NICKNAME_LEN + 1];
+    int nick_bytes = recv(newfd, &temp_nick, name_len, 0);
+    if (nick_bytes <= 0) {
+        close(newfd);
+        return;
+    }
+    temp_nick[nick_bytes] = '\0';
+
+    if (new_addr.ss_family == AF_INET) {
+        struct sockaddr_in *s = (struct sockaddr_in *)&new_addr;
+        client_port = ntohs(s->sin_port); // Big-Endian -> Host Order
+        inet_ntop(AF_INET, &s->sin_addr, remoteIP, sizeof remoteIP);
+    } else { // Else if it's IPv6, i.e. AF_INET6
+        struct sockaddr_in6 *s = (struct sockaddr_in6 *)&new_addr;
+        client_port = ntohs(s->sin6_port); // Big-Endian -> Host Order
+        inet_ntop(AF_INET6, &s->sin6_addr, remoteIP, sizeof remoteIP);
+
+    }
     
     int added = 0;
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (client_sockets[i] == -1) {
-            client_sockets[i] = newfd;
-            printf("\n{+} New client connected! (Slot %d)\n", i);
+        if (clients[i].fd == -1) {
+            clients[i].fd = newfd;
+            strncpy(clients[i].nickname, temp_nick, MAX_NICKNAME_LEN);
+            clients[i].nickname[MAX_NICKNAME_LEN] = '\0';
+
+            printf("\n{+} New client '%s' connected from: %s:%d (Slot %d)\n", clients[i].nickname, remoteIP, client_port, i);
             added = 1;
             break;
         }
     }
     if (!added) {
-        printf("\n{-} Server full! Connection rejected.\n");
+        printf("\n{-} Server full! Connection rejected for '%s'.\n", temp_nick);
         close(newfd);
     }
 }
 
-server_control_t handle_stdin_input(int client_sockets[]) {
+server_control_t handle_stdin_input(void) {
     char send_buf[MAX_BUFF_LEN];
     if (fgets(send_buf, sizeof send_buf, stdin) == NULL) {
         clearerr(stdin);
@@ -132,7 +180,7 @@ server_control_t handle_stdin_input(int client_sockets[]) {
         return SERVER_STOP;
     }
 
-    send_buf[strcspn(send_buf, "\n")] = '\0';
+    send_buf[strcspn(send_buf, "\r\n")] = '\0';
 
     if (strcmp(send_buf, "exit") == 0) {
         printf("Exiting server...\n");
@@ -144,16 +192,16 @@ server_control_t handle_stdin_input(int client_sockets[]) {
 
     int sent_count = 0;
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (client_sockets[i] != -1) {
+        if (clients[i].fd != -1) {
             char msg_with_newline[MAX_BUFF_LEN + 2];
             snprintf(msg_with_newline, sizeof(msg_with_newline), "%s\n", send_buf);
 
-            int bytes = send(client_sockets[i], msg_with_newline, strlen(msg_with_newline), 0);
+            int bytes = send(clients[i].fd, msg_with_newline, strlen(msg_with_newline), 0);
             
             if (bytes == -1) {
                 printf("{-} Failed to send to slot %d, closing connection.\n", i);
-                close(client_sockets[i]);
-                client_sockets[i] = -1;
+                close(clients[i].fd);
+                clients[i].fd = -1;
             } else {
                 sent_count++;
             }
@@ -163,13 +211,13 @@ server_control_t handle_stdin_input(int client_sockets[]) {
     return SERVER_CONTINUE;
 }
 
-server_control_t process_connections(struct pollfd fds[], int listen_fd, int client_sockets[]) {
+server_control_t process_connections(struct pollfd fds[], int listen_fd) {
     if (fds[1].revents & POLLIN) {
-        handle_incoming_connection(listen_fd, client_sockets);
+        handle_incoming_connection(listen_fd);
     }
 
     if (fds[0].revents & (POLLIN | POLLHUP)) {
-        return handle_stdin_input(client_sockets);
+        return handle_stdin_input();
     }
 
     return SERVER_CONTINUE;
@@ -187,9 +235,9 @@ int main(void) {
 
     printf("=== Broadcast Chat Server started on port %s ===\n", PORT);
 
-    int client_sockets[MAX_CLIENTS];
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        client_sockets[i] = -1;
+        clients[i].fd = -1;
+        clients[i].nickname[0] = '\0';
     }
 
     struct pollfd fds[2];
@@ -210,14 +258,14 @@ int main(void) {
             break;
         }
 
-        server_control_t status = process_connections(fds, listen_fd, client_sockets);
+        server_control_t status = process_connections(fds, listen_fd);
         if (status == SERVER_STOP) {
             running = 0;
         }
     }
 
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (client_sockets[i] != -1) close(client_sockets[i]);
+        if (clients[i].fd != -1) close(clients[i].fd);
     }
     close(listen_fd);
     return 0;
