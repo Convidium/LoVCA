@@ -26,10 +26,12 @@ Make sure you're in the LoVCA folder (like with UDP)
 1. Then in the first terminal write `./bin/server_tcp.out` (**.out** is a binary file for Linux only). 
 It runs the compiled binary program file that sets up the **server**.
 
-2. Then in the second terminal write `./bin/client_tcp.out localhost`.
+2. Then in the second terminal write `./bin/client_tcp.out localhost nickname`.
 `localhost` (or alternatively `127.0.0.1`) is the local network of your computer, a network which is
 used for communication between **server** and **client** processes. We write it, so that our **client** knows 
 where to look for the **server**.
+Instead of `nickname` you can actually write anything you'd like, its your nickname that the server will see,
+when you'll try to connect to it.
 
 3. You can also add as many clients as you like (max limit is 20). They all would work identically.
 
