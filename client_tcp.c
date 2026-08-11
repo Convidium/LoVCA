@@ -14,20 +14,12 @@
 #include <arpa/inet.h>
 
 #include "protocol.h"
+#include "net_utils.h"
 
 typedef enum {
     SERVER_CONTINUE = 0,
     SERVER_STOP = 1
 } client_control_t;
-
-void *get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
 
 int get_client_socket(char address[]) {
     int sockfd;
@@ -54,7 +46,7 @@ int get_client_socket(char address[]) {
         return -1;
     }
 
-    inet_ntop(servinfo->ai_family, get_in_addr((struct sockaddr *)servinfo->ai_addr), server_ip, sizeof server_ip);
+    sockaddr_get_ip((struct sockaddr *)servinfo->ai_addr, server_ip, sizeof server_ip);
     printf("Client: attempting connection to %s...\n", server_ip);
 
     if (connect(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) == -1) {

@@ -15,6 +15,7 @@
 #include <poll.h>
 
 #include "protocol.h"
+#include "net_utils.h"
 
 typedef enum {
     SERVER_CONTINUE = 0,
@@ -82,7 +83,7 @@ void handle_incoming_connection(int listener) {
     int remote_fd;
 
     char remote_ip[INET6_ADDRSTRLEN];
-    char remote_port[6];
+    int remote_port;
 
     addrlen = sizeof remote_addr;
     remote_fd = accept(listener, (struct sockaddr *)&remote_addr, &addrlen);
@@ -115,11 +116,8 @@ void handle_incoming_connection(int listener) {
     }
     temp_nick[nick_bytes] = '\0';
 
-    getnameinfo((struct sockaddr *)&remote_addr, sizeof(remote_addr),
-            remote_ip, sizeof(remote_ip),
-            remote_port, sizeof(remote_port),
-            NI_NUMERICHOST | NI_NUMERICSERV);
-    remote_port[5] = '\0';
+    sockaddr_get_ip((struct sockaddr *)&remote_addr, remote_ip, sizeof remote_ip);
+    remote_port = sockaddr_get_port((struct sockaddr *)&remote_addr);
     
     int added = 0;
     for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -128,7 +126,7 @@ void handle_incoming_connection(int listener) {
             strncpy(clients[i].nickname, temp_nick, MAX_NICKNAME_LEN);
             clients[i].nickname[MAX_NICKNAME_LEN] = '\0';
 
-            printf("\n{+} New client '%s' connected from: %s:%s (Slot %d)\n", clients[i].nickname, remote_ip, remote_port, i);
+            printf("\n{+} New client '%s' connected from: %s:%d (Slot %d)\n", clients[i].nickname, remote_ip, remote_port, i);
             added = 1;
             break;
         }

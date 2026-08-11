@@ -8,6 +8,9 @@ A decentralized, autonomous app for local video communication.
 Simple server-client UDP/TCP connection, where client sends a message to local server.
 
 # How to run:
+I compile the files separately.
+Write `gcc -Wall -Wextra server_tcp.c net_utils.c -o ./bin/server_tcp.out` to compile server file.
+Write `gcc -Wall -Wextra client_tcp.c net_utils.c -o ./bin/client_tcp.out` to compile client file.
 
 ## UDP Server / CLient
 You'll need two terminals. 
@@ -26,11 +29,11 @@ Make sure you're in the LoVCA folder (like with UDP)
 1. Then in the first terminal write `./bin/server_tcp.out` (**.out** is a binary file for Linux only). 
 It runs the compiled binary program file that sets up the **server**.
 
-2. Then in the second terminal write `./bin/client_tcp.out localhost nickname`.
-`localhost` (or alternatively `127.0.0.1`) is the local network of your computer, a network which is
+2. Then in the second terminal write `./bin/client_tcp.out <ip>> <nickname>`.
+In `<ip>` write `localhost` (or alternatively `127.0.0.1`), it is the local network of your computer, a network which is
 used for communication between **server** and **client** processes. We write it, so that our **client** knows 
 where to look for the **server**.
-Instead of `nickname` you can actually write anything you'd like, its your nickname that the server will see,
+In `<nickname>` you can actually write anything you'd like, its your nickname that the server will see,
 when you'll try to connect to it.
 
 3. You can also add as many clients as you like (max limit is 20). They all would work identically.
