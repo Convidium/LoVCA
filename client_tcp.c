@@ -13,9 +13,6 @@
 
 #include <arpa/inet.h>
 
-#define PORT "8841"
-#define MAX_BUFF_LEN 256
-
 #include "protocol.h"
 
 typedef enum {
@@ -58,7 +55,7 @@ int get_client_socket(char address[]) {
     }
 
     inet_ntop(servinfo->ai_family, get_in_addr((struct sockaddr *)servinfo->ai_addr), server_ip, sizeof server_ip);
-    printf("Client: attempting connection to %s\n", server_ip);
+    printf("Client: attempting connection to %s...\n", server_ip);
 
     if (connect(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) == -1) {
         perror("Client: connect()");
@@ -67,7 +64,6 @@ int get_client_socket(char address[]) {
         return -1;
     }
 
-    inet_ntop(servinfo->ai_family, get_in_addr((struct sockaddr *)servinfo->ai_addr), server_ip, sizeof server_ip);
     printf("Client: connected to %s\n", server_ip);
     printf("Type 'exit' or press Ctrl+D to disconnect this server.\n\n");
 
@@ -106,7 +102,7 @@ client_control_t handle_server_message(int sockfd) {
 
     buf[bytes_received] = '\0';
     buf[strcspn(buf, "\r\n")] = '\0'; 
-    printf("Server message (%d bytes):\n\"%s\"\n", bytes_received, buf);
+    printf("Server (%d bytes)> \"%s\"\n", bytes_received, buf);
 
     return SERVER_CONTINUE;
 }
@@ -114,10 +110,8 @@ client_control_t handle_server_message(int sockfd) {
 client_control_t handle_stdin_input() {
     char send_buf[MAX_BUFF_LEN];
     if (fgets(send_buf, sizeof send_buf, stdin) == NULL) {
-        // Either Ctrl + D (EOF) was pressed or some write error happened
-        printf("\nClient: closing connection...\n");
-        // Clear the flag that signalizes EOF
-        clearerr(stdin); 
+        printf("\nClient: closing connection...\n");    // Either Ctrl + D (EOF) was pressed or some write error happened
+        clearerr(stdin);                                // Clear the flag that signalizes EOF
         return SERVER_STOP;
     }
 
@@ -165,7 +159,7 @@ int main(int argc, char *argv[]) {
     if (send_auth_message(sockfd, nickname) == -1) {
         perror("Failed to send auth message.");
         close(sockfd);
-        return 1;
+        return SERVER_STOP;
     }
 
     struct pollfd fds[2];

@@ -14,11 +14,6 @@
 #include <errno.h>
 #include <poll.h>
 
-#define PORT "8841"
-#define BACKLOG 10
-#define MAX_CLIENTS 20
-#define MAX_BUFF_LEN 256
-
 #include "protocol.h"
 
 typedef enum {
@@ -32,30 +27,6 @@ typedef struct {
 } client_t;
 
 client_t clients[MAX_CLIENTS];
-
-
-// Convert socket to IP address string.
-// addr: struct sockaddr_in or struct sockaddr_in6
-const char *inet_ntop2(void *addr, char *buf, size_t size) {
-    struct sockaddr_storage *sas = addr;
-    struct sockaddr_in *sa4;
-    struct sockaddr_in6 *sa6;
-    void *src;
-
-    switch (sas->ss_family) {
-        case AF_INET:
-            sa4 = addr;
-            src = &(sa4->sin_addr);
-            break;
-        case AF_INET6:
-            sa6 = addr;
-            src = &(sa6->sin6_addr);
-            break;
-        default:
-            return NULL;
-    }
-    return inet_ntop(sas->ss_family, src, buf, size);
-}
 
 // Create and establish new socket (fd listener)
 int get_listener_socket(void) {
@@ -74,14 +45,14 @@ int get_listener_socket(void) {
     addr_status = getaddrinfo(NULL, PORT, &hints, &servinfo);
     if (addr_status != 0) {
         fprintf(stderr, "Error: getaddrinfo()\n");
-        exit(1);
+        return -1;
     }
 
     listen_fd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
     if (listen_fd == -1) {
         perror("Error: socket()");
         freeaddrinfo(servinfo);
-        exit(1);
+        return -1;
     }
 
     setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
@@ -91,7 +62,7 @@ int get_listener_socket(void) {
         perror("Error: socket()");
         close(listen_fd);
         freeaddrinfo(servinfo);
-        exit(1);
+        return -1;
     }
 
     freeaddrinfo(servinfo);
@@ -106,69 +77,65 @@ int get_listener_socket(void) {
 }
 
 void handle_incoming_connection(int listener) {
-    struct sockaddr_storage new_addr; // Client address
+    struct sockaddr_storage remote_addr; // Client address
     socklen_t addrlen;
-    int newfd;  // Newly accept()'ed socket descriptor
-    char remoteIP[INET6_ADDRSTRLEN];
-    int client_port = 0;
+    int remote_fd;
 
-    addrlen = sizeof new_addr;
-    newfd = accept(listener, (struct sockaddr *)&new_addr, &addrlen);
+    char remote_ip[INET6_ADDRSTRLEN];
+    char remote_port[6];
 
-    if (newfd == -1) {
+    addrlen = sizeof remote_addr;
+    remote_fd = accept(listener, (struct sockaddr *)&remote_addr, &addrlen);
+
+    if (remote_fd == -1) {
         perror("Error: accept()");
         return;
     }
 
     msg_header_t header;
-    int bytes = recv(newfd, &header, sizeof(header), 0);
+    int bytes = recv(remote_fd, &header, sizeof(header), 0);
     if (bytes <= 0 || header.type != MSG_AUTH) {
-        printf("\n{-} Client failed authentication header. Closing socket %d.\n", newfd);
-        close(newfd);
+        printf("\n{-} Client failed authentication header. Closing socket %d.\n", remote_fd);
+        close(remote_fd);
         return;
     }
 
     uint16_t name_len = ntohs(header.length);
     if (name_len == 0 || name_len > MAX_NICKNAME_LEN) {
         printf("\n{-} Invalid nickname length (%d bytes). Connection rejected.\n", name_len);
-        close(newfd);
+        close(remote_fd);
         return;
     }
 
     char temp_nick[MAX_NICKNAME_LEN + 1];
-    int nick_bytes = recv(newfd, &temp_nick, name_len, 0);
+    int nick_bytes = recv(remote_fd, &temp_nick, name_len, 0);
     if (nick_bytes <= 0) {
-        close(newfd);
+        close(remote_fd);
         return;
     }
     temp_nick[nick_bytes] = '\0';
 
-    if (new_addr.ss_family == AF_INET) {
-        struct sockaddr_in *s = (struct sockaddr_in *)&new_addr;
-        client_port = ntohs(s->sin_port); // Big-Endian -> Host Order
-        inet_ntop(AF_INET, &s->sin_addr, remoteIP, sizeof remoteIP);
-    } else { // Else if it's IPv6, i.e. AF_INET6
-        struct sockaddr_in6 *s = (struct sockaddr_in6 *)&new_addr;
-        client_port = ntohs(s->sin6_port); // Big-Endian -> Host Order
-        inet_ntop(AF_INET6, &s->sin6_addr, remoteIP, sizeof remoteIP);
-
-    }
+    getnameinfo((struct sockaddr *)&remote_addr, sizeof(remote_addr),
+            remote_ip, sizeof(remote_ip),
+            remote_port, sizeof(remote_port),
+            NI_NUMERICHOST | NI_NUMERICSERV);
+    remote_port[5] = '\0';
     
     int added = 0;
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (clients[i].fd == -1) {
-            clients[i].fd = newfd;
+            clients[i].fd = remote_fd;
             strncpy(clients[i].nickname, temp_nick, MAX_NICKNAME_LEN);
             clients[i].nickname[MAX_NICKNAME_LEN] = '\0';
 
-            printf("\n{+} New client '%s' connected from: %s:%d (Slot %d)\n", clients[i].nickname, remoteIP, client_port, i);
+            printf("\n{+} New client '%s' connected from: %s:%s (Slot %d)\n", clients[i].nickname, remote_ip, remote_port, i);
             added = 1;
             break;
         }
     }
     if (!added) {
         printf("\n{-} Server full! Connection rejected for '%s'.\n", temp_nick);
-        close(newfd);
+        close(remote_fd);
     }
 }
 

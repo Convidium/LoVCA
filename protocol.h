@@ -2,8 +2,14 @@
 #define PROTOCOL_H
 
 #include <stdint.h>
+ 
+#define PORT "8841"
 
+#define BACKLOG 10
 #define MAX_NICKNAME_LEN 32
+#define MAX_CLIENTS 20
+
+#define MAX_BUFF_LEN 256
 
 typedef enum {
     MSG_AUTH = 1,
