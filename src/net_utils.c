@@ -32,7 +32,7 @@ int sockaddr_get_port(const struct sockaddr *sa) {
     return -1;
 }
 
-int sendall(int s, char *buf, int *len) {
+int sendall(int s, const void *buf, int *len) {
     int bytes_sent = 0;
     int bytes_left = *len;
     int send_status;
@@ -49,9 +49,9 @@ int sendall(int s, char *buf, int *len) {
     *len = bytes_sent;
 
     return send_status == -1 ? -1:0;
-};
+}
 
-int recvall(int s, char *buf, int *len) {
+int recvall(int s, void *buf, int *len) {
     int bytes_received = 0;
     int bytes_left = *len;
     int recv_status;
@@ -70,4 +70,4 @@ int recvall(int s, char *buf, int *len) {
     }
 
     return 0;
-};
+}

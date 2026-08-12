@@ -12,10 +12,6 @@
 #include "net_utils.h"
 #include "packet.h"
 
-#define DEFAULT_PORT "8841"
-#define MAX_CLIENTS 32
-#define BACKLOG 10
-
 typedef struct {
     int fd;
     char nickname[MAX_NICKNAME_LEN + 1];
@@ -28,7 +24,7 @@ static int poll_size = 2;
 static void init_server(void) {
     for (int i = 0; i < MAX_CLIENTS; i++) {
         client_fds[i].fd = -1;
-        client_fds[i].nickname[0] = '/0';
+        client_fds[i].nickname[0] = '\0';
     }
 }
 
@@ -130,13 +126,13 @@ int main(void) {
     signal(SIGPIPE, SIG_IGN);
     init_server();
 
-    int listener_fd = create_listener_socket(DEFAULT_PORT, BACKLOG);
+    int listener_fd = create_listener_socket(PORT, BACKLOG);
     if (listener_fd == -1) {
         perror("Failed to start listener");
         return 1;
     }
 
-    printf("=== Star Server started on port %s ===\n", DEFAULT_PORT);
+    printf("=== Star Server started on port %s ===\n", PORT);
 
     pfds[0].fd = STDIN_FILENO;
     pfds[0].events = POLLIN;

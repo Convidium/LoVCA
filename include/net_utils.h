@@ -27,10 +27,10 @@ for simplicity reasons*/
 
 // Sends exactly *len bytes from buf to socket s.
 // Returns 0 on success, or -1 on error. *len contains the number of bytes actually sent.
-int sendall(int s, char *buf, int *len);
+int sendall(int s, const void *buf, int *len);
 
 // Receives exactly *len bytes from socket s into buf.
 // Returns 0 on success, -1 on error/closure. *len contains the number of bytes actually received.
-int recvall(int s, char *buf, int *len);
+int recvall(int s, void *buf, int *len);
 
 #endif

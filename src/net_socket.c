@@ -64,7 +64,6 @@ cleanup:
 int create_client_socket(const char *host, const char *port) {
     int client_fd;
     struct addrinfo hints, *servinfo;
-    char server_ip[INET_ADDRSTRLEN];
 
     int addr_status;
     memset(&hints, 0, sizeof hints);
