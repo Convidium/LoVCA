@@ -143,6 +143,7 @@ void handle_client_message(int slot_index) {
     int bytes = recv(client_fd, &header, sizeof(header), 0);
     if (bytes <= 0 || header.type != MSG_TEXT) {
         printf("\n{-} Client failed to send a message.\n");
+        close(client_fd);
         return;
     }
 
@@ -158,7 +159,7 @@ void handle_client_message(int slot_index) {
         return;
     }
     message[message_bytes] = '\0';
-    printf("\nClient (%d) {%s} > %s\n", slot_index, client_fds[slot_index].nickname, message);
+    printf("\n%s (%d) > %s\n", client_fds[slot_index].nickname, slot_index, message);
 }
 
 server_control_t handle_stdin_input(void) {
